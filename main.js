@@ -32,8 +32,22 @@ let swapSourceIdx = null;  // 用于交换的源格子索引
 let rotateState = {
     isRotating: false,
     startAngle: 0,
-    currentAngle: 0
+    currentAngle: 0,
+    lastUpdateTime: 0, // 上次更新时间戳
+    updateInterval: 60 // 最小更新间隔(毫秒)
 };
+
+// 事件节流函数
+function throttle(callback, delay) {
+    let previousCall = 0;
+    return function(...args) {
+        const now = Date.now();
+        if (now - previousCall > delay) {
+            previousCall = now;
+            callback.apply(this, args);
+        }
+    };
+}
 
 function selectTemplate(idx) {
     selectedTemplateIdx = idx;
@@ -94,6 +108,36 @@ function renderPreview() {
     console.log("渲染预览, 当前编辑格子:", editingCellIdx);
     const area = document.getElementById('preview-area');
     area.innerHTML = '';
+    area.style.margin = '0';
+    area.style.padding = '0';
+    area.style.width = '100%';
+    
+    // 添加或更新全局样式以解决移动端定位问题
+    let globalStyle = document.getElementById('global-mobile-style');
+    if (!globalStyle) {
+        globalStyle = document.createElement('style');
+        globalStyle.id = 'global-mobile-style';
+        document.head.appendChild(globalStyle);
+    }
+    globalStyle.textContent = `
+        @media (max-width: 767px) {
+            body, html {
+                margin: 0;
+                padding: 0;
+                width: 100%;
+                overflow-x: hidden;
+            }
+            #preview-area {
+                width: 100% !important;
+                max-width: 100% !important;
+                padding: 0 !important;
+                margin: 0 auto !important;
+                box-sizing: border-box;
+                display: flex;
+                justify-content: center;
+            }
+        }
+    `;
     
     if (selectedTemplateIdx === null || uploadedImages.length === 0) {
         area.innerHTML = '<p>请先选择模板并上传图片</p>';
@@ -113,23 +157,43 @@ function renderPreview() {
     const innerWidth = sizeW - padding * 2;
     const innerHeight = sizeH - padding * 2;
     
-    // 创建整体布局容器（grid布局）
+    // 创建整体布局容器（响应式布局）
     const mainContainer = document.createElement('div');
-    mainContainer.style.display = 'grid';
-    mainContainer.style.gridTemplateColumns = 'auto minmax(180px, 220px)';
-    mainContainer.style.gap = '30px';
-    mainContainer.style.justifyContent = 'center';
-    mainContainer.style.width = '100%';
-    mainContainer.style.maxWidth = '100%';
+
+    // 检测是否为移动设备
+    const isMobile = window.innerWidth < 768;
+    if (isMobile) {
+        // 移动端垂直布局，优化居中
+        mainContainer.style.display = 'flex';
+        mainContainer.style.flexDirection = 'column';
+        mainContainer.style.gap = '15px';
+        mainContainer.style.alignItems = 'center'; 
+        mainContainer.style.padding = '0';
+        mainContainer.style.margin = '0 auto';
+        mainContainer.style.width = '100%'; 
+    } else {
+        // 桌面端网格布局
+        mainContainer.style.display = 'grid';
+        mainContainer.style.gridTemplateColumns = 'auto minmax(180px, 220px)';
+        mainContainer.style.gap = '30px';
+        mainContainer.style.justifyContent = 'center';
+        mainContainer.style.width = '100%';
+        mainContainer.style.maxWidth = '100%';
+    }
     
     // 创建渲染主区域
     const renderArea = document.createElement('div');
     renderArea.className = 'render-container';
     renderArea.style.position = 'relative';
-    renderArea.style.width = '300px';
-    renderArea.style.maxWidth = '100%';
+    if (isMobile) {
+        // 移动端适配 - 使用具体像素值确保完全显示
+        renderArea.style.width = '100%';
+        renderArea.style.maxWidth = '300px'; // 确保不会超出屏幕
+    } else {
+        renderArea.style.width = '300px';
+    }
     renderArea.style.margin = '0 auto';
-    renderArea.style.gridColumn = '1';
+    renderArea.style.gridColumn = isMobile ? 'auto' : '1';
     
     // 1. SVG显示层 - 只负责显示，不处理事件
     let svg = `<svg id="preview-svg" width="100%" viewBox="0 0 ${sizeW} ${sizeH}" style="display:block;background-color:white;box-shadow:0 2px 8px rgba(0,0,0,0.15);" xmlns="http://www.w3.org/2000/svg">`;
@@ -208,26 +272,39 @@ function renderPreview() {
     previewContainer.style.display = 'flex';
     previewContainer.style.flexDirection = 'column';
     previewContainer.style.alignItems = 'center';
-    previewContainer.style.padding = '15px';
+    if (isMobile) {
+        previewContainer.style.width = '100%';
+        previewContainer.style.maxWidth = '100%'; 
+        previewContainer.style.padding = '10px';
+        previewContainer.style.margin = '0 auto';
+        previewContainer.style.boxSizing = 'border-box';
+    } else {
+        previewContainer.style.padding = '15px';
+    }
     previewContainer.style.border = '1px solid #e0e0e0';
     previewContainer.style.borderRadius = '8px';
     previewContainer.style.backgroundColor = '#f9f9f9';
     previewContainer.appendChild(previewTitle);
     previewContainer.appendChild(renderArea);
     
-    // 替换图片按钮区域（完全独立的控制区）
+    // 修改控制面板在移动端的样式
     const buttonArea = document.createElement('div');
     buttonArea.className = 'control-panel';
     buttonArea.style.display = 'flex';
     buttonArea.style.flexDirection = 'column';
     buttonArea.style.gap = '10px';
-    buttonArea.style.padding = '15px';
+    if (isMobile) {
+        buttonArea.style.width = '100%';
+        buttonArea.style.maxWidth = '100%';
+        buttonArea.style.padding = '10px';
+    } else {
+        buttonArea.style.padding = '15px';
+    }
     buttonArea.style.border = '1px solid #e0e0e0';
     buttonArea.style.borderRadius = '8px';
     buttonArea.style.backgroundColor = '#f9f9f9';
-    buttonArea.style.gridColumn = '2';
-    buttonArea.style.alignSelf = 'start';
-    buttonArea.style.height = '100%';
+    buttonArea.style.gridColumn = isMobile ? 'auto' : '2';
+    buttonArea.style.alignSelf = isMobile ? 'center' : 'start';
     buttonArea.style.boxSizing = 'border-box';
     
     const buttonTitle = document.createElement('h3');
@@ -713,8 +790,8 @@ function renderPreview() {
         const scaleRatio = svgRect.width / sizeW; // SVG缩放比例
         
         // 旋转控制点样式和位置
-        const rotateHandleSize = 20;
-        const distanceFromBorder = 30; // 控制点到格子边缘的距离
+        const rotateHandleSize = isMobile ? 32 : 20; // 移动端更大的控制点
+        const distanceFromBorder = isMobile ? 40 : 30; // 移动端增加距离，便于触控
         
         // 计算旋转控制点位置（放在格子上方的中心位置）
         const handleTop = Math.max(10, (center.y - currentCellData.height/2 - distanceFromBorder) * scaleRatio);
@@ -947,8 +1024,8 @@ function renderPreview() {
         lastTouches = [];
     }
     
-    // 旋转处理函数
-    function handleRotateMouseMove(e) {
+    // 鼠标旋转处理也使用节流
+    const throttledRotateMouseMove = throttle(function(e) {
         if (rotateState.isRotating && editingCellIdx !== null) {
             const currentAngle = Math.atan2(
                 e.clientY - rotateState.centerY,
@@ -961,10 +1038,19 @@ function renderPreview() {
             // 应用旋转
             imageTransforms[editingCellIdx].rotation = (rotateState.initialRotation + angleDiff) % 360;
             
-            renderPreview();
+            // 降低重绘频率
+            const now = Date.now();
+            if (now - rotateState.lastUpdateTime > rotateState.updateInterval) {
+                rotateState.lastUpdateTime = now;
+                renderPreview();
+            }
         }
+    }, 16);
+
+    function handleRotateMouseMove(e) {
+        throttledRotateMouseMove(e);
     }
-    
+
     function handleRotateMouseUp(e) {
         rotateState.isRotating = false;
         document.body.style.cursor = 'default';
@@ -972,8 +1058,8 @@ function renderPreview() {
         document.removeEventListener('mouseup', handleRotateMouseUp);
     }
     
-    // 触摸旋转处理
-    function handleRotateTouchMove(e) {
+    // 触摸旋转处理 - 使用节流优化
+    const throttledRotateTouchMove = throttle(function(e) {
         e.preventDefault();
         if (rotateState.isRotating && editingCellIdx !== null && e.touches.length > 0) {
             const touch = e.touches[0];
@@ -985,11 +1071,28 @@ function renderPreview() {
             // 计算角度差
             let angleDiff = currentAngle - rotateState.startAngle;
             
-            // 应用旋转
+            // 应用旋转 - 直接更新当前角度，不重新渲染
             imageTransforms[editingCellIdx].rotation = (rotateState.initialRotation + angleDiff) % 360;
             
-            renderPreview();
+            // 使用CSS transform更新旋转控制点的视觉旋转效果
+            const rotateHandle = document.querySelector('.rotate-handle');
+            const line = document.querySelector('.rotate-handle + div'); // 假设线条是旋转把手的下一个元素
+            if (rotateHandle && line) {
+                rotateHandle.style.transform = `rotate(${angleDiff}deg)`;
+                line.style.transform = `translateY(100%) rotate(${angleDiff}deg)`;
+            }
+
+            // 降低重绘频率
+            const now = Date.now();
+            if (now - rotateState.lastUpdateTime > rotateState.updateInterval) {
+                rotateState.lastUpdateTime = now;
+                renderPreview();
+            }
         }
+    }, 16);
+
+    function handleRotateTouchMove(e) {
+        throttledRotateTouchMove(e);
     }
     
     function handleRotateTouchEnd(e) {
@@ -1102,4 +1205,47 @@ document.getElementById('download-btn').onclick = function() {
 // 初始化
 window.onload = function() {
     renderTemplateList(templates);
+    
+    // 监听窗口大小变化，重新渲染布局
+    window.addEventListener('resize', function() {
+        // 只有在已经选择了模板和上传了图片的情况下才重新渲染
+        if (selectedTemplateIdx !== null && uploadedImages.length > 0) {
+            // 添加延迟，避免频繁重绘
+            clearTimeout(window.resizeTimer);
+            window.resizeTimer = setTimeout(function() {
+                renderPreview();
+            }, 250);
+        }
+    });
+
+    // 添加移动端调试助手
+    if (window.innerWidth < 768) {
+        const debugBtn = document.createElement('button');
+        debugBtn.textContent = '📱 调试信息';
+        debugBtn.style.position = 'fixed';
+        debugBtn.style.bottom = '10px';
+        debugBtn.style.right = '10px';
+        debugBtn.style.zIndex = '9999';
+        debugBtn.style.padding = '8px 12px';
+        debugBtn.style.backgroundColor = '#4285f4';
+        debugBtn.style.color = 'white';
+        debugBtn.style.border = 'none';
+        debugBtn.style.borderRadius = '4px';
+        debugBtn.style.fontSize = '14px';
+        debugBtn.addEventListener('click', function() {
+            const previewArea = document.getElementById('preview-area');
+            const previewRect = previewArea ? previewArea.getBoundingClientRect() : null;
+            const svgEl = document.getElementById('preview-svg');
+            const svgRect = svgEl ? svgEl.getBoundingClientRect() : null;
+            
+            alert(`📱 移动端调试信息:
+- 屏幕宽度: ${window.innerWidth}px
+- 屏幕高度: ${window.innerHeight}px
+- 设备像素比: ${window.devicePixelRatio}
+- 预览区位置: x=${previewRect?.left.toFixed(0) || 'N/A'}, y=${previewRect?.top.toFixed(0) || 'N/A'}
+- 预览区尺寸: ${previewRect?.width.toFixed(0) || 'N/A'} × ${previewRect?.height.toFixed(0) || 'N/A'}
+- SVG尺寸: ${svgRect?.width.toFixed(0) || 'N/A'} × ${svgRect?.height.toFixed(0) || 'N/A'}`);
+        });
+        document.body.appendChild(debugBtn);
+    }
 }; 
