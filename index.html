@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>在线拼图/照片墙生成器</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>在线拼图/照片墙生成器</h1>
+        <a href="template-designer.html" class="btn btn-secondary" style="position:absolute; right:20px; top:20px;">模板设计器</a>
+    </header>
+    <main>
+        <section id="template-section">
+            <h2>1. 选择模板</h2>
+            <div id="template-list"></div>
+        </section>
+        <section id="upload-section">
+            <h2>2. 上传图片</h2>
+            <input type="file" id="image-upload" accept="image/*" multiple>
+            <div id="upload-tip"></div>
+        </section>
+        <section id="preview-section">
+            <h2>3. 拼图预览</h2>
+            <div id="preview-area"></div>
+            <button id="download-btn">下载拼图</button>
+        </section>
+    </main>
+    <script src="templates.js"></script>
+    <script src="main.js"></script>
+</body>
+</html> 

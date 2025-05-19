@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>拼图模板设计器</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        #designer-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        #canvas-area {
+            width: 300px;
+            height: 480px;
+            background: #f8f8f8;
+            border: 1px solid #ccc;
+            position: relative;
+            flex-shrink: 0;
+        }
+        #template-form {
+            flex: 1;
+            min-width: 320px;
+        }
+        .coordinate-point {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: red;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            cursor: move;
+            z-index: 10;
+        }
+        .coordinate-label {
+            position: absolute;
+            font-size: 12px;
+            background: rgba(255,255,255,0.8);
+            padding: 2px 4px;
+            border-radius: 4px;
+            pointer-events: none;
+            z-index: 11;
+        }
+        .cell-polygon {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .control-panel {
+            margin-bottom: 20px;
+        }
+        .cell-container {
+            margin-bottom: 16px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #f9f9f9;
+        }
+        input[type="number"] {
+            width: 60px;
+        }
+        .coordinate-inputs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .action-buttons {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 8px 16px;
+            background: #4f8cff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-secondary {
+            background: #6c757d;
+        }
+        .btn-success {
+            background: #28a745;
+        }
+        .btn-danger {
+            background: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>拼图模板设计器</h1>
+        <a href="index.html" class="btn btn-secondary" style="position:absolute; right:20px; top:20px;">返回主页</a>
+    </header>
+    <main>
+        <h2>创建/编辑模板</h2>
+        <div id="designer-container">
+            <div id="canvas-area">
+                <svg class="cell-polygon" width="300" height="480"></svg>
+                <!-- 点位会动态添加 -->
+            </div>
+            <div id="template-form">
+                <div class="control-panel">
+                    <label for="template-name">模板名称：</label>
+                    <input type="text" id="template-name" placeholder="请输入模板名称">
+                    <button id="add-cell-btn" class="btn">添加格子</button>
+                    <select id="template-select">
+                        <option value="">-- 加载现有模板 --</option>
+                    </select>
+                </div>
+                <div id="cells-container">
+                    <!-- 格子表单会动态添加 -->
+                </div>
+                <div class="action-buttons">
+                    <button id="preview-btn" class="btn">预览</button>
+                    <button id="generate-code-btn" class="btn btn-success">生成代码</button>
+                    <button id="clear-btn" class="btn btn-danger">清空</button>
+                </div>
+                <div id="code-output" style="margin-top: 20px;">
+                    <h3>模板代码</h3>
+                    <textarea id="template-code" rows="10" style="width: 100%; font-family: monospace;" readonly></textarea>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="templates.js"></script>
+    <script>
+        // 当前编辑的模板数据
+        let currentTemplate = {
+            name: '',
+            cells: []
+        };
+        
+        // DOM元素
+        const canvasArea = document.getElementById('canvas-area');
+        const cellsContainer = document.getElementById('cells-container');
+        const templateNameInput = document.getElementById('template-name');
+        const addCellBtn = document.getElementById('add-cell-btn');
+        const previewBtn = document.getElementById('preview-btn');
+        const generateCodeBtn = document.getElementById('generate-code-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const templateCodeArea = document.getElementById('template-code');
+        const templateSelect = document.getElementById('template-select');
+        const svgElement = document.querySelector('.cell-polygon');
+        
+        // 初始化已有模板选择
+        function initTemplateSelect() {
+            templateSelect.innerHTML = '<option value="">-- 加载现有模板 --</option>';
+            templates.forEach((tpl, idx) => {
+                const option = document.createElement('option');
+                option.value = idx;
+                option.textContent = tpl.name;
+                templateSelect.appendChild(option);
+            });
+        }
+        
+        // 加载现有模板
+        templateSelect.addEventListener('change', function() {
+            const idx = this.value;
+            if (!idx) return;
+            
+            const tpl = templates[idx];
+            loadTemplate(tpl);
+        });
+        
+        // 加载模板到编辑器
+        function loadTemplate(tpl) {
+            // 复制模板数据
+            currentTemplate = JSON.parse(JSON.stringify(tpl));
+            templateNameInput.value = currentTemplate.name;
+            
+            // 清空现有格子
+            cellsContainer.innerHTML = '';
+            canvasArea.querySelectorAll('.coordinate-point, .coordinate-label').forEach(el => el.remove());
+            
+            // 添加格子表单和点位
+            currentTemplate.cells.forEach((cell, cellIdx) => {
+                addCellForm(cellIdx);
+                updateCellVisualization(cellIdx);
+            });
+            
+            updatePreview();
+        }
+        
+        // 添加格子
+        addCellBtn.addEventListener('click', function() {
+            const cellIdx = currentTemplate.cells.length;
+            // 添加默认四边形
+            currentTemplate.cells.push([
+                {x: 0.1, y: 0.1},
+                {x: 0.9, y: 0.1},
+                {x: 0.9, y: 0.3},
+                {x: 0.1, y: 0.3}
+            ]);
+            
+            addCellForm(cellIdx);
+            updateCellVisualization(cellIdx);
+            updatePreview();
+        });
+        
+        // 添加格子表单
+        function addCellForm(cellIdx) {
+            const cell = currentTemplate.cells[cellIdx];
+            const cellDiv = document.createElement('div');
+            cellDiv.className = 'cell-container';
+            cellDiv.dataset.cellIdx = cellIdx;
+            
+            let html = `
+                <h3>格子 ${cellIdx + 1}</h3>
+                <button class="remove-cell-btn btn btn-danger" data-cell-idx="${cellIdx}">删除此格子</button>
+                <div class="cell-points">
+            `;
+            
+            cell.forEach((point, pointIdx) => {
+                html += `
+                    <div class="coordinate-inputs" data-point-idx="${pointIdx}">
+                        <span>点${pointIdx + 1}:</span>
+                        <label>X: <input type="number" step="0.01" min="0" max="1" class="point-x" value="${point.x}"></label>
+                        <label>Y: <input type="number" step="0.01" min="0" max="1" class="point-y" value="${point.y}"></label>
+                        <button class="remove-point-btn btn btn-danger">删除点</button>
+                    </div>
+                `;
+            });
+            
+            html += `
+                </div>
+                <button class="add-point-btn btn" data-cell-idx="${cellIdx}">添加点</button>
+            `;
+            
+            cellDiv.innerHTML = html;
+            cellsContainer.appendChild(cellDiv);
+            
+            // 添加事件监听器
+            // 删除格子
+            cellDiv.querySelector('.remove-cell-btn').addEventListener('click', function() {
+                removeCell(parseInt(this.dataset.cellIdx));
+            });
+            
+            // 添加点
+            cellDiv.querySelector('.add-point-btn').addEventListener('click', function() {
+                addPoint(parseInt(this.dataset.cellIdx));
+            });
+            
+            // 删除点
+            cellDiv.querySelectorAll('.remove-point-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const pointDiv = this.closest('.coordinate-inputs');
+                    const pointIdx = parseInt(pointDiv.dataset.pointIdx);
+                    removePoint(cellIdx, pointIdx);
+                });
+            });
+            
+            // 坐标输入变化
+            cellDiv.querySelectorAll('.point-x, .point-y').forEach(input => {
+                input.addEventListener('input', function() {
+                    const pointDiv = this.closest('.coordinate-inputs');
+                    const pointIdx = parseInt(pointDiv.dataset.pointIdx);
+                    const fieldName = this.classList.contains('point-x') ? 'x' : 'y';
+                    let value = parseFloat(this.value);
+                    value = Math.max(0, Math.min(1, value)); // 限制在0-1之间
+                    
+                    currentTemplate.cells[cellIdx][pointIdx][fieldName] = value;
+                    updatePointPosition(cellIdx, pointIdx);
+                    updatePreview();
+                });
+            });
+        }
+        
+        // 添加点
+        function addPoint(cellIdx) {
+            const cell = currentTemplate.cells[cellIdx];
+            const lastPoint = cell[cell.length - 1];
+            const newPoint = {
+                x: lastPoint ? lastPoint.x + 0.1 : 0.1,
+                y: lastPoint ? lastPoint.y + 0.1 : 0.1
+            };
+            
+            // 确保坐标在范围内
+            newPoint.x = Math.min(1, newPoint.x);
+            newPoint.y = Math.min(1, newPoint.y);
+            
+            cell.push(newPoint);
+            
+            // 更新表单
+            const cellDiv = document.querySelector(`.cell-container[data-cell-idx="${cellIdx}"]`);
+            const pointsContainer = cellDiv.querySelector('.cell-points');
+            
+            const pointDiv = document.createElement('div');
+            pointDiv.className = 'coordinate-inputs';
+            pointDiv.dataset.pointIdx = cell.length - 1;
+            pointDiv.innerHTML = `
+                <span>点${cell.length}:</span>
+                <label>X: <input type="number" step="0.01" min="0" max="1" class="point-x" value="${newPoint.x}"></label>
+                <label>Y: <input type="number" step="0.01" min="0" max="1" class="point-y" value="${newPoint.y}"></label>
+                <button class="remove-point-btn btn btn-danger">删除点</button>
+            `;
+            
+            pointsContainer.appendChild(pointDiv);
+            
+            // 添加事件监听器
+            const removeBtn = pointDiv.querySelector('.remove-point-btn');
+            removeBtn.addEventListener('click', function() {
+                removePoint(cellIdx, cell.length - 1);
+            });
+            
+            const inputs = pointDiv.querySelectorAll('.point-x, .point-y');
+            inputs.forEach(input => {
+                input.addEventListener('input', function() {
+                    const pointIdx = parseInt(pointDiv.dataset.pointIdx);
+                    const fieldName = this.classList.contains('point-x') ? 'x' : 'y';
+                    let value = parseFloat(this.value);
+                    value = Math.max(0, Math.min(1, value));
+                    
+                    currentTemplate.cells[cellIdx][pointIdx][fieldName] = value;
+                    updatePointPosition(cellIdx, pointIdx);
+                    updatePreview();
+                });
+            });
+            
+            updateCellVisualization(cellIdx);
+            updatePreview();
+        }
+        
+        // 删除点
+        function removePoint(cellIdx, pointIdx) {
+            const cell = currentTemplate.cells[cellIdx];
+            if (cell.length <= 3) {
+                alert('多边形至少需要3个点！');
+                return;
+            }
+            
+            // 删除数据中的点
+            cell.splice(pointIdx, 1);
+            
+            // 删除表单中的点
+            const cellDiv = document.querySelector(`.cell-container[data-cell-idx="${cellIdx}"]`);
+            const pointDiv = cellDiv.querySelector(`.coordinate-inputs[data-point-idx="${pointIdx}"]`);
+            pointDiv.remove();
+            
+            // 更新剩余点的索引
+            cellDiv.querySelectorAll('.coordinate-inputs').forEach((div, idx) => {
+                div.dataset.pointIdx = idx;
+                div.querySelector('span').textContent = `点${idx + 1}:`;
+            });
+            
+            // 删除画布上的点
+            document.querySelectorAll(`.coordinate-point[data-cell-idx="${cellIdx}"][data-point-idx="${pointIdx}"], .coordinate-label[data-cell-idx="${cellIdx}"][data-point-idx="${pointIdx}"]`).forEach(el => el.remove());
+            
+            // 更新剩余点的索引
+            document.querySelectorAll(`.coordinate-point[data-cell-idx="${cellIdx}"], .coordinate-label[data-cell-idx="${cellIdx}"]`).forEach(el => {
+                const idx = parseInt(el.dataset.pointIdx);
+                if (idx > pointIdx) {
+                    el.dataset.pointIdx = idx - 1;
+                    if (el.classList.contains('coordinate-label')) {
+                        el.textContent = `点${idx}`;
+                    }
+                }
+            });
+            
+            updateCellVisualization(cellIdx);
+            updatePreview();
+        }
+        
+        // 删除格子
+        function removeCell(cellIdx) {
+            if (currentTemplate.cells.length <= 1) {
+                alert('至少需要保留一个格子！');
+                return;
+            }
+            
+            // 删除数据
+            currentTemplate.cells.splice(cellIdx, 1);
+            
+            // 删除表单
+            const cellDiv = document.querySelector(`.cell-container[data-cell-idx="${cellIdx}"]`);
+            cellDiv.remove();
+            
+            // 删除点位
+            document.querySelectorAll(`.coordinate-point[data-cell-idx="${cellIdx}"], .coordinate-label[data-cell-idx="${cellIdx}"]`).forEach(el => el.remove());
+            
+            // 更新剩余格子的索引
+            document.querySelectorAll('.cell-container').forEach((div, idx) => {
+                div.dataset.cellIdx = idx;
+                div.querySelector('h3').textContent = `格子 ${idx + 1}`;
+                div.querySelector('.remove-cell-btn').dataset.cellIdx = idx;
+                div.querySelector('.add-point-btn').dataset.cellIdx = idx;
+            });
+            
+            document.querySelectorAll('.coordinate-point, .coordinate-label').forEach(el => {
+                const idx = parseInt(el.dataset.cellIdx);
+                if (idx > cellIdx) {
+                    el.dataset.cellIdx = idx - 1;
+                }
+            });
+            
+            updatePreview();
+        }
+        
+        // 更新点位置可视化
+        function updatePointPosition(cellIdx, pointIdx) {
+            const point = currentTemplate.cells[cellIdx][pointIdx];
+            const pointEl = document.querySelector(`.coordinate-point[data-cell-idx="${cellIdx}"][data-point-idx="${pointIdx}"]`);
+            const labelEl = document.querySelector(`.coordinate-label[data-cell-idx="${cellIdx}"][data-point-idx="${pointIdx}"]`);
+            
+            if (pointEl && labelEl) {
+                const x = point.x * 300;
+                const y = point.y * 480;
+                
+                pointEl.style.left = `${x}px`;
+                pointEl.style.top = `${y}px`;
+                
+                labelEl.style.left = `${x + 15}px`;
+                labelEl.style.top = `${y - 15}px`;
+            }
+        }
+        
+        // 更新单个格子的可视化
+        function updateCellVisualization(cellIdx) {
+            // 清除该格子的点位
+            document.querySelectorAll(`.coordinate-point[data-cell-idx="${cellIdx}"], .coordinate-label[data-cell-idx="${cellIdx}"]`).forEach(el => el.remove());
+            
+            const cell = currentTemplate.cells[cellIdx];
+            
+            // 为每个点添加可拖动点和标签
+            cell.forEach((point, pointIdx) => {
+                const x = point.x * 300;
+                const y = point.y * 480;
+                
+                // 创建点
+                const pointEl = document.createElement('div');
+                pointEl.className = 'coordinate-point';
+                pointEl.dataset.cellIdx = cellIdx;
+                pointEl.dataset.pointIdx = pointIdx;
+                pointEl.style.left = `${x}px`;
+                pointEl.style.top = `${y}px`;
+                canvasArea.appendChild(pointEl);
+                
+                // 创建标签
+                const label = document.createElement('div');
+                label.className = 'coordinate-label';
+                label.textContent = `点${pointIdx + 1}`;
+                label.dataset.cellIdx = cellIdx;
+                label.dataset.pointIdx = pointIdx;
+                label.style.left = `${x + 15}px`;
+                label.style.top = `${y - 15}px`;
+                canvasArea.appendChild(label);
+                
+                // 拖拽功能
+                pointEl.addEventListener('mousedown', startDrag);
+                pointEl.addEventListener('touchstart', startDrag, {passive: false});
+            });
+        }
+        
+        // 拖拽点位
+        function startDrag(e) {
+            e.preventDefault();
+            
+            const pointEl = this;
+            const cellIdx = parseInt(pointEl.dataset.cellIdx);
+            const pointIdx = parseInt(pointEl.dataset.pointIdx);
+            
+            function moveHandler(e) {
+                let clientX, clientY;
+                
+                if (e.type === 'touchmove') {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                } else {
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                }
+                
+                const rect = canvasArea.getBoundingClientRect();
+                let x = (clientX - rect.left);
+                let y = (clientY - rect.top);
+                
+                // 限制在画布内
+                x = Math.max(0, Math.min(300, x));
+                y = Math.max(0, Math.min(480, y));
+                
+                // 更新点位置
+                currentTemplate.cells[cellIdx][pointIdx].x = x / 300;
+                currentTemplate.cells[cellIdx][pointIdx].y = y / 480;
+                
+                // 更新表单
+                const input = document.querySelector(`.cell-container[data-cell-idx="${cellIdx}"] .coordinate-inputs[data-point-idx="${pointIdx}"] .point-x`);
+                input.value = (x / 300).toFixed(2);
+                
+                const inputY = document.querySelector(`.cell-container[data-cell-idx="${cellIdx}"] .coordinate-inputs[data-point-idx="${pointIdx}"] .point-y`);
+                inputY.value = (y / 480).toFixed(2);
+                
+                updatePointPosition(cellIdx, pointIdx);
+                updatePreview();
+            }
+            
+            function endDrag() {
+                document.removeEventListener('mousemove', moveHandler);
+                document.removeEventListener('touchmove', moveHandler);
+                document.removeEventListener('mouseup', endDrag);
+                document.removeEventListener('touchend', endDrag);
+            }
+            
+            document.addEventListener('mousemove', moveHandler);
+            document.addEventListener('touchmove', moveHandler, {passive: false});
+            document.addEventListener('mouseup', endDrag);
+            document.addEventListener('touchend', endDrag);
+        }
+        
+        // 更新预览
+        function updatePreview() {
+            svgElement.innerHTML = '';
+            
+            currentTemplate.cells.forEach((cell, cellIdx) => {
+                if (cell.length < 3) return; // 至少需要3个点
+                
+                const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                const points = cell.map(pt => `${pt.x * 300},${pt.y * 480}`).join(' ');
+                
+                polygon.setAttribute('points', points);
+                polygon.setAttribute('fill', 'rgba(200, 200, 255, 0.3)');
+                polygon.setAttribute('stroke', '#4f8cff');
+                polygon.setAttribute('stroke-width', '2');
+                
+                svgElement.appendChild(polygon);
+            });
+        }
+        
+        // 生成代码
+        generateCodeBtn.addEventListener('click', function() {
+            currentTemplate.name = templateNameInput.value || '新模板';
+            
+            let code = `{\n    name: '${currentTemplate.name}',\n    cells: [\n`;
+            
+            currentTemplate.cells.forEach((cell, cellIdx) => {
+                code += `        // 格子${cellIdx + 1}\n`;
+                code += `        [ ${cell.map(pt => `{x:${pt.x.toFixed(2)}, y:${pt.y.toFixed(2)}}`).join(', ')} ],\n`;
+            });
+            
+            code += '    ]\n}';
+            
+            templateCodeArea.value = code;
+        });
+        
+        // 预览按钮
+        previewBtn.addEventListener('click', function() {
+            updatePreview();
+        });
+        
+        // 清空按钮
+        clearBtn.addEventListener('click', function() {
+            if (confirm('确定要清空当前模板吗？')) {
+                currentTemplate = {
+                    name: '',
+                    cells: []
+                };
+                templateNameInput.value = '';
+                cellsContainer.innerHTML = '';
+                canvasArea.querySelectorAll('.coordinate-point, .coordinate-label').forEach(el => el.remove());
+                svgElement.innerHTML = '';
+            }
+        });
+        
+        // 模板名称变化
+        templateNameInput.addEventListener('input', function() {
+            currentTemplate.name = this.value;
+        });
+        
+        // 初始化
+        window.onload = function() {
+            initTemplateSelect();
+            // 默认添加一个格子
+            addCellBtn.click();
+        };
+    </script>
+</body>
+</html> 

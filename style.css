@@ -1,0 +1,86 @@
+body {
+    font-family: 'Segoe UI', 'Arial', sans-serif;
+    background: #f7f7f7;
+    margin: 0;
+    padding: 0;
+}
+header {
+    background: #4f8cff;
+    color: #fff;
+    padding: 20px 0;
+    text-align: center;
+}
+main {
+    max-width: 900px;
+    margin: 30px auto;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    padding: 30px;
+}
+section {
+    margin-bottom: 32px;
+}
+#template-list {
+    display: flex;
+    gap: 12px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 8px;
+}
+.template-item {
+    min-width: 70px;
+    max-width: 80px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 6px 4px 2px 4px;
+    cursor: pointer;
+    background: #fafbfc;
+    transition: border 0.2s;
+    flex-shrink: 0;
+}
+.template-item.selected {
+    border: 2px solid #4f8cff;
+    background: #eaf3ff;
+}
+#preview-area {
+    min-height: 400px;
+    background: #f0f0f0;
+    border: 1px dashed #bbb;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 300px;
+    margin: 0 auto;
+    box-sizing: border-box;
+    aspect-ratio: 5/8;
+}
+#download-btn {
+    margin-top: 20px;
+    padding: 10px 24px;
+    background: #4f8cff;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+#download-btn:hover {
+    background: #2566d8;
+}
+@media (max-width: 500px) {
+    main {
+        padding: 4px;
+    }
+    #preview-area {
+        min-height: 220px;
+        max-width: 100vw;
+        aspect-ratio: 5/8;
+    }
+    #template-list {
+        gap: 8px;
+    }
+} 
